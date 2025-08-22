@@ -1,0 +1,6 @@
+crewai
+sentence-transformers
+faiss-cpu
+watchfiles
+pyyaml
+mistune
