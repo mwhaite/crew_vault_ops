@@ -2,6 +2,12 @@ from pathlib import Path
 import re
 
 def run_maintenance(vault: Path, tasks: list[str]):
+    """Runs maintenance tasks on the vault.
+
+    Args:
+        vault: The path to the vault.
+        tasks: A list of maintenance tasks to run.
+    """
     log = []
     if not tasks or "empty" in tasks:
         empties = [p for p in vault.rglob("*.md") if p.stat().st_size < 5]
