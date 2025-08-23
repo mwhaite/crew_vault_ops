@@ -7,29 +7,6 @@ import json, os, yaml, datetime
 from .embedder import embed_texts, load_faiss, save_faiss
 from .maintenance import run_maintenance
 
-VAULT_PATH = Path(os.getenv("OBSIDIAN_VAULT", "./vault")).resolve()
-INDEX_DIR   = Path("./vector_store").resolve()
-INDEX_FILE  = INDEX_DIR / "faiss_index.bin"
-META_FILE   = INDEX_DIR / "chunks.json"
-
-class VaultOpsInput(BaseModel):
-    action: str = Field(
-        ...,
-        description=("What to do. Options: 'ask', 'create', 'read', 'update', 'delete', 'maintenance'"),
-    )
-    path: Optional[str] = Field(
-        None,
-        description="Relative path (inside vault) for CRUD actions"
-    )
-    text: Optional[str] = Field(
-        None,
-        description="Markdown content for create/update, or question for 'ask'"
-    )
-    maintenance_tasks: Optional[List[str]] = Field(
-        None,
-        description="Subset of maintenance jobs to run; leave blank for all"
-    )
-
 class VaultOpsTool(BaseTool):
     name: str = "vault_ops"
     description: str = (
@@ -37,6 +14,13 @@ class VaultOpsTool(BaseTool):
         "Supports RAG Q&A ('ask') plus CRUD and maintenance."
     )
     args_schema: Type[BaseModel] = VaultOpsInput
+
+    def __init__(self, vault_path: str = "./vault"):
+        super().__init__()
+        self.VAULT_PATH = Path(vault_path).resolve()
+        self.INDEX_DIR   = self.VAULT_PATH / ".index"
+        self.INDEX_FILE  = self.INDEX_DIR / "faiss_index.bin"
+        self.META_FILE   = self.INDEX_DIR / "chunks.json"
 
     def _abs(self, rel: str) -> Path:
         p = (VAULT_PATH / rel).resolve()
@@ -119,7 +103,7 @@ class VaultOpsTool(BaseTool):
 
     def _ask(self, question: str, k: int = 5) -> str:
         self._ensure_index()
-        index, chunks = load_faiss(INDEX_FILE), json.loads(META_FILE.read_text())
+        index, chunks = load_faiss(self.INDEX_FILE), json.loads(self.META_FILE.read_text())
         qvec = embed_texts([question])
         D, I = index.search(qvec, k)
         context = "\n\n".join(chunks[i]["para"] for i in I[0])
