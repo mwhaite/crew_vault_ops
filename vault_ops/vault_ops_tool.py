@@ -1,11 +1,30 @@
 from __future__ import annotations
-from typing import List, Tuple, Type, Dict, Any, Optional
+from typing import List, Tuple, Type, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
 from pathlib import Path
 import json, os, yaml, datetime
 from .embedder import embed_texts, load_faiss, save_faiss
 from .maintenance import run_maintenance
+
+
+class VaultOpsInput(BaseModel):
+    action: Literal["create", "read", "update", "delete", "ask", "maintenance"] = Field(
+        ..., description="Operation to perform: CRUD, ask (RAG), or maintenance."
+    )
+    path: Optional[str] = Field(
+        None, description="Vault-relative path for CRUD actions (e.g., notes/example.md)."
+    )
+    text: Optional[str] = Field(
+        None,
+        description=(
+            "Note content for create/update or the question text for ask (RAG retrieval)."
+        ),
+    )
+    maintenance_tasks: Optional[List[str]] = Field(
+        None,
+        description="Optional list of maintenance task names to run (defaults to all).",
+    )
 
 class VaultOpsTool(BaseTool):
     name: str = "vault_ops"
@@ -202,10 +221,10 @@ class VaultOpsTool(BaseTool):
 
     def _run(
         self,
-        action: str,
-        path: str | None = None,
-        text: str | None = None,
-        maintenance_tasks: List[str] | None = None,
+        action: Literal["create", "read", "update", "delete", "ask", "maintenance"],
+        path: Optional[str] = None,
+        text: Optional[str] = None,
+        maintenance_tasks: Optional[List[str]] = None,
     ) -> str:
         match action:
             case "create": return self._create(path, text or "")
@@ -216,5 +235,11 @@ class VaultOpsTool(BaseTool):
             case "maintenance": return self._maintenance(maintenance_tasks or [])
             case _:        return "Unknown action."
 
-    async def _arun(self, **kwargs):
-        return self._run(**kwargs)
+    async def _arun(
+        self,
+        action: Literal["create", "read", "update", "delete", "ask", "maintenance"],
+        path: Optional[str] = None,
+        text: Optional[str] = None,
+        maintenance_tasks: Optional[List[str]] = None,
+    ):
+        return self._run(action, path=path, text=text, maintenance_tasks=maintenance_tasks)
