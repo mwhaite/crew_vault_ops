@@ -3,7 +3,7 @@ from typing import List, Tuple, Type, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
 from pathlib import Path
-import json, os, yaml, datetime
+import json, os, yaml, datetime, numpy as np
 from .embedder import embed_texts, load_faiss, save_faiss
 from .maintenance import run_maintenance
 
@@ -141,6 +141,7 @@ class VaultOpsTool(BaseTool):
 
     def _bulk_index_vault(self):
         """Indexes the entire vault."""
+        self.INDEX_DIR.mkdir(parents=True, exist_ok=True)
         chunks, embeddings = [], []
         for md in self.VAULT_PATH.rglob("*.md"):
             with open(md, encoding="utf-8") as f:
@@ -149,9 +150,11 @@ class VaultOpsTool(BaseTool):
                 if para.strip():
                     chunks.append({"file": str(md), "para": para})
                     embeddings.append(para)
-        vecs = embed_texts(embeddings)
-        index = load_faiss(vecs.shape[1])
-        index.add(vecs)
+        vecs = embed_texts(embeddings) if embeddings else np.empty((0, 0))
+        d = vecs.shape[1] if vecs.size else embed_texts([""]).shape[1]
+        index = load_faiss(self.INDEX_FILE, d)
+        if vecs.size:
+            index.add(vecs)
         save_faiss(index, self.INDEX_FILE)
         self.META_FILE.write_text(json.dumps(chunks, indent=2))
 
@@ -163,12 +166,13 @@ class VaultOpsTool(BaseTool):
             overwrite: Whether to overwrite the existing index.
         """
         self._ensure_index()
-        index, chunks = load_faiss(self.INDEX_FILE), json.loads(self.META_FILE.read_text())
         if overwrite:
             self._remove_from_index(str(path))
         with open(path, encoding="utf-8") as f:
             txt = f.read()
         vecs = embed_texts([txt])
+        index = load_faiss(self.INDEX_FILE, vecs.shape[1])
+        chunks = json.loads(self.META_FILE.read_text()) if self.META_FILE.exists() else []
         index.add(vecs)
         chunks.append({"file": str(path), "para": txt})
         save_faiss(index, self.INDEX_FILE)
@@ -197,8 +201,9 @@ class VaultOpsTool(BaseTool):
             The answer to the question.
         """
         self._ensure_index()
-        index, chunks = load_faiss(self.INDEX_FILE), json.loads(self.META_FILE.read_text())
         qvec = embed_texts([question])
+        index = load_faiss(self.INDEX_FILE, qvec.shape[1])
+        chunks = json.loads(self.META_FILE.read_text()) if self.META_FILE.exists() else []
         D, I = index.search(qvec, k)
         context = "\n\n".join(chunks[i]["para"] for i in I[0])
         answer = (
